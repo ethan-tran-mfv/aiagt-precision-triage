@@ -1,0 +1,62 @@
+[
+  {
+    "issue_id": "1",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.85,
+    "label": "Numerical Accuracy — wrong revenue total"
+  },
+  {
+    "issue_id": "2",
+    "accuracy_related": false,
+    "expected_confidence_min": 0.0,
+    "label": "UI/UX bug — not accuracy related"
+  },
+  {
+    "issue_id": "3",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.85,
+    "label": "Data Accuracy — wrong user record displayed"
+  },
+  {
+    "issue_id": "4",
+    "accuracy_related": false,
+    "expected_confidence_min": 0.0,
+    "label": "Performance issue — not accuracy related"
+  },
+  {
+    "issue_id": "5",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.80,
+    "label": "Classification Accuracy — ML model wrong prediction"
+  },
+  {
+    "issue_id": "6",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.85,
+    "label": "Numerical Accuracy — decimal place error"
+  },
+  {
+    "issue_id": "7",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.65,
+    "label": "Ranking/Classification Accuracy — wrong recommendations"
+  },
+  {
+    "issue_id": "8",
+    "accuracy_related": false,
+    "expected_confidence_min": 0.0,
+    "label": "UI/UX — typo, not data accuracy"
+  },
+  {
+    "issue_id": "9",
+    "accuracy_related": true,
+    "expected_confidence_min": 0.85,
+    "label": "Aggregation Accuracy — duplicate count in metric"
+  },
+  {
+    "issue_id": "10",
+    "accuracy_related": false,
+    "expected_confidence_min": 0.0,
+    "label": "Borderline — timezone display, label is correct"
+  }
+]

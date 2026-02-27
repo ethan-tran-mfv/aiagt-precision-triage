@@ -1,0 +1,11 @@
+id,title,description,steps,severity
+1,Revenue total incorrect,"Dashboard shows $1,200 but actual revenue is $12,000",Open main dashboard and check revenue widget,high
+2,Login button misaligned,Submit button is 5px off-center on mobile Safari,,low
+3,Wrong user data displayed,"Profile page shows another user's email and phone number","Log in as user A, navigate to profile",critical
+4,Search results slow,Search takes 10+ seconds on datasets > 1000 items,,medium
+5,ML fraud model wrong label,Legitimate transaction classified as fraud with 0.95 confidence,"Submit transaction ID TXN-9982, check classification",high
+6,Percentage calculation off,"Discount shown as 50% but actual is 5% (missing decimal point)",View product page with discount applied,high
+7,Recommendation shows wrong category,Electronics page recommends kitchen appliances,,medium
+8,Page title typo,"Dashbord" should be "Dashboard",,low
+9,Aggregation count duplicated,Monthly active users count includes same user multiple times,View MAU report for January,high
+10,Timezone mismatch in report,"Report shows events at wrong time, but timezone label is correct",,medium
