@@ -2,23 +2,22 @@
 Filter Node [5/8]
 
 Purpose:
-  Retain only accuracy-related issues that meet the confidence threshold.
-  Pure logic — no LLM, no external calls.
+  Two modes depending on whether classification was performed:
 
-Input:
-  state["classified_issues"]  list of ClassifiedIssue
-  state["enriched_task"]      contains confidence_threshold
+  Mode A — with filter_criteria (classification was run):
+    Keep issues where matches_criteria == True AND confidence >= threshold
+
+  Mode B — without filter_criteria (classification skipped):
+    Pass ALL parsed_issues through as filtered_issues unchanged
 
 Output:
-  state["accuracy_issues"]    filtered subset
-
-Filter logic:
-  include if: accuracy_related == True AND confidence >= confidence_threshold
+  state["filtered_issues"]  ready for orchestrator
 
 Teaching point:
-  The threshold is set dynamically by the enrichment node — not hardcoded.
-  Lab exercise: set threshold=0.9 vs threshold=0.4 and observe the
-  precision vs recall tradeoff in Langfuse metrics.
+  The threshold is set dynamically by the enrichment node.
+  If the user said "strict" → 0.8. If "all" → 0.4. Default → 0.6.
+
+  Lab exercise: change threshold and observe precision vs recall in Langfuse.
 """
 
 from schemas.state import AgentState
@@ -26,16 +25,26 @@ from schemas.state import AgentState
 
 def filter_node(state: AgentState) -> AgentState:
     """
-    [Node 5] Filter classified issues by accuracy flag and confidence threshold.
+    [Node 5] Filter issues by criteria match and confidence threshold.
+    Falls back to pass-through when no filter_criteria is set.
     """
     # TODO: implement filter node
     # Steps:
-    #   1. threshold = state["enriched_task"]["confidence_threshold"]
-    #   2. Filter state["classified_issues"]:
-    #        keep where accuracy_related == True AND confidence >= threshold
-    #   3. state["accuracy_issues"] = filtered list
-    #   4. If accuracy_issues is empty:
+    #   1. criteria = state["enriched_task"].get("filter_criteria")
+    #
+    #   2. Mode A — filter_criteria is NOT None (classification was run):
+    #        threshold = criteria["confidence_threshold"]
+    #        state["filtered_issues"] = [
+    #            i for i in state["classified_issues"]
+    #            if i["matches_criteria"] and i["confidence"] >= threshold
+    #        ]
+    #
+    #   3. Mode B — filter_criteria is None (no classification):
+    #        state["filtered_issues"] = state["parsed_issues"]  # pass all through
+    #
+    #   4. If filtered_issues is empty:
     #        state["metrics"]["early_exit"] = True
-    #        (graph-level conditional edge handles short-circuit)
+    #        state["metrics"]["early_exit_reason"] = "No issues matched the criteria"
+    #
     #   5. Return state
     raise NotImplementedError

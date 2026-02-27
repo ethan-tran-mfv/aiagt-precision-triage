@@ -1,1050 +1,553 @@
-Excellent.
-
-Below is an \*\*extended Technical Design Addendum\*\* with deeper system-level documentation and multiple production-grade diagrams that you can paste directly into slides or architecture documents.
-
-
-
-This expands the TDD into:
-
-
-
-\* C4-style architecture views
-
-\* Sequence diagrams
-
-\* Concurrency model diagram
-
-\* RAG internal pipeline diagram
-
-\* Observability architecture
-
-\* Failure handling architecture
-
-\* Deployment topology
-
-\* Data contract definitions
-
-\* Scaling strategy
-
-\* Cost control strategy
-
-
+# TECHNICAL DESIGN DOCUMENT — EXTENDED ARCHITECTURE
 
 ---
 
-
-
-\# TECHNICAL DESIGN DOCUMENT — EXTENDED ARCHITECTURE
-
-
+# 1. C4 Architecture View
 
 ---
 
-
-
-\# 1. C4 Architecture View
-
-
-
----
-
-
-
-\## 1.1 Level 1 — System Context
-
-
+## 1.1 Level 1 — System Context
 
 ```mermaid
-
 flowchart LR
+    User[Engineer / QA User]
+    QAIA[QA Intelligence Agent System]
+    Slack[Slack Workspace]
+    JIRA[JIRA Cloud]
+    OpenAI[OpenAI API]
+    LangSmith[LangSmith]
+    Langfuse[Langfuse]
 
-&nbsp;   User\[Engineer / QA User]
-
-&nbsp;   AIA\[Accuracy Intelligence Agent System]
-
-&nbsp;   Slack\[Slack Workspace]
-
-&nbsp;   JIRA\[JIRA Cloud]
-
-&nbsp;   OpenAI\[OpenAI API]
-
-&nbsp;   LangSmith\[LangSmith]
-
-&nbsp;   Langfuse\[Langfuse]
-
-
-
-&nbsp;   User --> AIA
-
-&nbsp;   AIA --> Slack
-
-&nbsp;   AIA --> JIRA
-
-&nbsp;   AIA --> OpenAI
-
-&nbsp;   AIA --> LangSmith
-
-&nbsp;   AIA --> Langfuse
-
+    User --> QAIA
+    QAIA --> Slack
+    QAIA --> JIRA
+    QAIA --> OpenAI
+    QAIA --> LangSmith
+    QAIA --> Langfuse
 ```
 
-
-
-Purpose:
-
-Shows external dependencies and integration boundaries.
-
-
+Purpose: Shows external dependencies and integration boundaries.
 
 ---
 
-
-
-\## 1.2 Level 2 — Container View
-
-
+## 1.2 Level 2 — Container View
 
 ```mermaid
-
 flowchart TB
+    Client[Web / CLI Client]
 
-&nbsp;   Client\[Web / CLI Client]
+    subgraph Backend
+        API[FastAPI Service]
+        Graph[LangGraph Engine]
+        RAG[Vector Store - Qdrant]
+        Parser[File Parser]
+        AnswerAgent[Answer Agent]
+        SlackAgent[Slack Agent]
+        JiraAgent[JIRA Agent]
+    end
 
+    OpenAI[OpenAI GPT-4o]
+    Slack[Slack API]
+    JIRA[JIRA API]
+    LangSmith[LangSmith]
+    Langfuse[Langfuse]
 
-
-&nbsp;   subgraph Backend
-
-&nbsp;       API\[FastAPI Service]
-
-&nbsp;       Graph\[LangGraph Engine]
-
-&nbsp;       RAG\[Vector Store (Qdrant)]
-
-&nbsp;       Parser\[File Parser]
-
-&nbsp;       SlackAgent\[Slack Agent]
-
-&nbsp;       JiraAgent\[JIRA Agent]
-
-&nbsp;   end
-
-
-
-&nbsp;   OpenAI\[OpenAI GPT-4o]
-
-&nbsp;   Slack\[Slack API]
-
-&nbsp;   JIRA\[JIRA API]
-
-&nbsp;   LangSmith\[LangSmith]
-
-&nbsp;   Langfuse\[Langfuse]
-
-
-
-&nbsp;   Client --> API
-
-&nbsp;   API --> Graph
-
-&nbsp;   Graph --> Parser
-
-&nbsp;   Graph --> RAG
-
-&nbsp;   Graph --> SlackAgent
-
-&nbsp;   Graph --> JiraAgent
-
-&nbsp;   Graph --> OpenAI
-
-&nbsp;   SlackAgent --> Slack
-
-&nbsp;   JiraAgent --> JIRA
-
-&nbsp;   Graph --> LangSmith
-
-&nbsp;   Graph --> Langfuse
-
+    Client --> API
+    API --> Graph
+    Graph --> Parser
+    Graph --> RAG
+    Graph --> AnswerAgent
+    Graph --> SlackAgent
+    Graph --> JiraAgent
+    Graph --> OpenAI
+    SlackAgent --> Slack
+    JiraAgent --> JIRA
+    JiraAgent --> RAG
+    AnswerAgent --> RAG
+    Graph --> LangSmith
+    Graph --> Langfuse
 ```
 
+---
 
+# 2. Detailed Execution Sequence
 
 ---
 
-
-
-\# 2. Detailed Execution Sequence
-
-
-
----
-
-
-
-\## 2.1 End-to-End Request Flow
-
-
+## 2.1 Full Pipeline — File + Filter + Slack + JIRA
 
 ```mermaid
-
 sequenceDiagram
+    participant User
+    participant API
+    participant Graph
+    participant RAG
+    participant LLM
+    participant Slack
+    participant JIRA
 
-&nbsp;   participant User
+    User->>API: POST /qa-intake (file + instruction)
+    API->>Graph: Start Workflow
 
-&nbsp;   participant API
+    Graph->>LLM: Enrichment Prompt
+    LLM-->>Graph: Structured Task (intent, filter_criteria, agents)
 
-&nbsp;   participant Graph
+    Graph->>RAG: Retrieve Taxonomy for filter_criteria.type
+    RAG-->>Graph: Definition Context
 
-&nbsp;   participant RAG
+    Graph->>LLM: Classify Issues (batched)
+    LLM-->>Graph: Classification Output
 
-&nbsp;   participant LLM
+    par Parallel Branches
+        Graph->>Slack: Post Summary
+        Slack-->>Graph: Slack URL
+    and
+        Graph->>JIRA: Create Tickets
+        JIRA-->>Graph: Ticket URLs
+    end
 
-&nbsp;   participant Slack
-
-&nbsp;   participant JIRA
-
-
-
-&nbsp;   User->>API: Upload QA File
-
-&nbsp;   API->>Graph: Start Workflow
-
-
-
-&nbsp;   Graph->>LLM: Enrichment Prompt
-
-&nbsp;   LLM-->>Graph: Structured Task
-
-
-
-&nbsp;   Graph->>RAG: Retrieve Accuracy Definition
-
-&nbsp;   RAG-->>Graph: Definition Context
-
-
-
-&nbsp;   Graph->>LLM: Classify Issues
-
-&nbsp;   LLM-->>Graph: Classification Output
-
-
-
-&nbsp;   par Parallel Branches
-
-&nbsp;       Graph->>Slack: Post Summary
-
-&nbsp;       Slack-->>Graph: Slack URL
-
-&nbsp;   and
-
-&nbsp;       Graph->>JIRA: Create Tickets
-
-&nbsp;       JIRA-->>Graph: Ticket URLs
-
-&nbsp;   end
-
-
-
-&nbsp;   Graph-->>API: Final Response
-
-&nbsp;   API-->>User: JSON Response
-
+    Graph-->>API: Final Response
+    API-->>User: JSON Response
 ```
-
-
 
 ---
 
-
-
-\# 3. RAG Internal Pipeline
-
-
-
-This clarifies how RAG is not “just retrieval.”
-
-
+## 2.2 Query-Only Path — No File
 
 ```mermaid
+sequenceDiagram
+    participant User
+    participant API
+    participant Graph
+    participant RAG
+    participant LLM
 
-flowchart TD
+    User->>API: POST /qa-intake (instruction only, no file)
+    API->>Graph: Start Workflow
 
-&nbsp;   A\[Enriched Task] --> B\[Query Generator]
+    Graph->>LLM: Enrichment Prompt
+    LLM-->>Graph: Structured Task (intent=query, requires_file=false)
 
-&nbsp;   B --> C\[Embedding Model]
+    Graph->>RAG: Retrieve relevant context
+    RAG-->>Graph: Knowledge context
 
-&nbsp;   C --> D\[Qdrant Search]
+    Graph->>LLM: Generate answer with RAG context
+    LLM-->>Graph: Structured answer
 
-&nbsp;   D --> E\[Top-K Chunks]
-
-&nbsp;   E --> F\[Relevance Scoring]
-
-&nbsp;   F --> G\[Context Packager]
-
-&nbsp;   G --> H\[LLM Classification]
-
+    Graph-->>API: Final Response
+    API-->>User: JSON Response
 ```
-
-
 
 ---
 
+# 3. Intent Routing Flow
 
+```mermaid
+flowchart TD
+    A[Enrichment Complete]
+    A --> B{requires_file_processing?}
+    B -- false --> C[Answer Agent - RAG Q&A]
+    B -- true --> D[RAG Retrieval]
+    D --> E[File Parser]
+    E --> F{filter_criteria set?}
+    F -- false --> H[Pass All Issues]
+    F -- true --> G[Classification Node]
+    G --> H
+    H --> I[Filter Node]
+    I --> J{Any issues match?}
+    J -- no --> K[Early Exit Response]
+    J -- yes --> L[Orchestrator]
+    L --> M{Which agents needed?}
+    M -- slack --> N[Slack Agent]
+    M -- jira --> O[JIRA Agent]
+    M -- analysis --> P[Answer Agent]
+    N --> Q[Aggregator]
+    O --> Q
+    P --> Q
+    C --> Q
+    K --> Q
+    Q --> R[Response Builder]
+```
 
-\## 3.1 Retrieval Logic
+---
 
+# 4. RAG Internal Pipeline
 
+```mermaid
+flowchart TD
+    A[Enriched Task - filter_criteria] --> B[Dynamic Query Generator]
+    B --> C[Embedding Model]
+    C --> D[Qdrant Search]
+    D --> E[Top-K Chunks]
+    E --> F[Relevance Scoring]
+    F --> G[Re-ranker - keep top 3]
+    G --> H[Context Packager]
+    H --> I[LLM Classification / Answer]
+```
 
-Query:
+## 4.1 Retrieval Logic
 
-
-
-"Definition and classification rules for accuracy-related QA issues."
-
-
+Query: dynamically built from `filter_criteria.type` + `filter_criteria.description`
 
 Search:
-
-
-
-\* Top 5 semantic matches
-
-\* Similarity threshold ≥ 0.72
-
-
+* Top 5 semantic matches
+* Similarity threshold ≥ 0.72
 
 Relevance scoring:
-
-
-
-\* Rerank top 5
-
-\* Keep top 3
-
-
+* Rerank top 5
+* Keep top 3
 
 Context assembly:
-
-
-
-\* Merge
-
-\* Remove duplicates
-
-\* Attach metadata
-
-
+* Merge, remove duplicates, attach metadata
 
 ---
 
+# 5. Concurrency Model
 
-
-\# 4. Concurrency Model
-
-
-
----
-
-
-
-\## 4.1 Parallel Branch Architecture
-
-
+## 5.1 Dynamic Parallel Branch Architecture
 
 ```mermaid
-
 flowchart TD
+    A[Orchestrator - issues ready]
+    A --> B1[Slack Branch - if required]
+    A --> B2[JIRA Branch - if required]
+    A --> B3[Answer Branch - if required]
 
-&nbsp;   A\[Accuracy Issues Ready]
+    B1 --> C1[Generate Summary]
+    C1 --> D1[Post Slack]
 
-&nbsp;   A --> B1\[Slack Branch]
+    B2 --> C2[Duplicate Check via RAG]
+    C2 --> D2[Create Tickets Async]
 
-&nbsp;   A --> B2\[JIRA Branch]
-
-
-
-&nbsp;   B1 --> C1\[Generate Summary]
-
-&nbsp;   C1 --> D1\[Post Slack]
-
-
-
-&nbsp;   B2 --> C2\[Duplicate Check]
-
-&nbsp;   C2 --> D2\[Create Tickets Async]
-
+    B3 --> C3[RAG Context Retrieval]
+    C3 --> D3[Generate Analysis]
 ```
 
-
-
-Execution:
-
-
-
-\* asyncio.gather()
-
-\* Branch timeout control
-
-\* Independent error handling
-
-
+Execution: `asyncio.gather()` across all active branches.
+Inactive branches (flag = false) are skipped entirely.
 
 ---
 
-
-
-\## 4.2 Internal Ticket-Level Parallelism
-
-
+## 5.2 Ticket-Level Parallelism
 
 ```mermaid
-
 flowchart LR
-
-&nbsp;   A\[Accuracy Issues]
-
-&nbsp;   A --> T1\[Ticket 1]
-
-&nbsp;   A --> T2\[Ticket 2]
-
-&nbsp;   A --> T3\[Ticket 3]
-
+    A[Filtered Issues]
+    A --> T1[Ticket 1]
+    A --> T2[Ticket 2]
+    A --> T3[Ticket 3]
 ```
-
-
 
 Concurrency limit: 5 simultaneous calls.
 
-
-
 ---
 
-
-
-\# 5. State Machine View
-
-
+# 6. State Machine View
 
 ```mermaid
-
 stateDiagram-v2
-
-&nbsp;   \[\*] --> Enrichment
-
-&nbsp;   Enrichment --> RAG
-
-&nbsp;   RAG --> Classification
-
-&nbsp;   Classification --> Filter
-
-&nbsp;   Filter --> Orchestrator
-
-&nbsp;   Orchestrator --> SlackBranch
-
-&nbsp;   Orchestrator --> JiraBranch
-
-&nbsp;   SlackBranch --> Aggregate
-
-&nbsp;   JiraBranch --> Aggregate
-
-&nbsp;   Aggregate --> Complete
-
-&nbsp;   Complete --> \[\*]
-
+    [*] --> Enrichment
+    Enrichment --> IntentRouter
+    IntentRouter --> AnswerAgent : query only
+    IntentRouter --> RAGRetrieval : file processing
+    RAGRetrieval --> FileParser
+    FileParser --> Classification : filter_criteria set
+    FileParser --> Filter : no filter_criteria
+    Classification --> Filter
+    Filter --> EarlyExit : no matches
+    Filter --> Orchestrator : matches found
+    Orchestrator --> SlackBranch : if required
+    Orchestrator --> JIRABranch : if required
+    Orchestrator --> AnswerBranch : if required
+    SlackBranch --> Aggregate
+    JIRABranch --> Aggregate
+    AnswerBranch --> Aggregate
+    AnswerAgent --> Aggregate
+    EarlyExit --> ResponseBuilder
+    Aggregate --> ResponseBuilder
+    ResponseBuilder --> [*]
 ```
 
-
-
 ---
 
+# 7. Observability Architecture
 
-
-\# 6. Observability Architecture
-
-
-
----
-
-
-
-\## 6.1 Logging \& Trace Flow
-
-
+## 7.1 Logging & Trace Flow
 
 ```mermaid
-
 flowchart LR
-
-&nbsp;   Graph --> Trace\[LangSmith]
-
-&nbsp;   Graph --> Metrics\[Langfuse]
-
+    Graph --> Trace[LangSmith]
+    Graph --> Metrics[Langfuse]
 ```
 
+### LangSmith Tracks
 
+* Node execution time
+* Prompt inputs
+* Tool outputs
+* Retry attempts
+* JSON validation errors
+* Branch execution time
+* **Routing decisions** (which path was taken, which agents activated)
 
-\### LangSmith Tracks
+### Langfuse Tracks
 
-
-
-\* Node execution time
-
-\* Prompt inputs
-
-\* Tool outputs
-
-\* Retry attempts
-
-\* JSON validation errors
-
-\* Branch execution time
-
-
-
-\### Langfuse Tracks
-
-
-
-\* Token usage per node
-
-\* Cost per request
-
-\* Classification precision
-
-\* Duplicate rate
-
-\* Slack/JIRA success rate
-
-
+* Token usage per node
+* Cost per request
+* Classification precision
+* Duplicate rate
+* Slack/JIRA success rate
+* **Intent distribution** (query vs filter vs analyze vs update)
+* **Agent activation rate** (which agents are most commonly used)
 
 ---
 
-
-
-\# 7. Failure Isolation Model
-
-
-
----
-
-
+# 8. Failure Isolation Model
 
 ```mermaid
-
 flowchart TD
+    A[Parallel Execution]
+    A --> B1[Slack Success]
+    A --> B2[JIRA Failure]
+    A --> B3[Answer Success]
 
-&nbsp;   A\[Parallel Execution]
-
-&nbsp;   A --> B1\[Slack Success]
-
-&nbsp;   A --> B2\[JIRA Failure]
-
-
-
-&nbsp;   B2 --> R\[Retry]
-
-&nbsp;   R --> S\[Still Fail]
-
-&nbsp;   S --> F\[Log Error + Continue]
-
+    B2 --> R[Retry]
+    R --> S[Still Fail]
+    S --> F[Log Error + Continue]
 ```
-
-
 
 Policy:
-
-
-
-Slack failure does not block JIRA.
-
-JIRA failure per ticket does not block other tickets.
-
-
+* Any single agent failure does not block other agents
+* JIRA failure per ticket does not block other tickets
+* If ALL agents fail → return partial response with errors
 
 ---
 
+# 9. Data Contracts
 
-
-\# 8. Data Contracts
-
-
-
----
-
-
-
-\## 8.1 Classification Output Contract
-
-
+## 9.1 EnrichedTask Contract
 
 ```json
-
 {
-
-&nbsp; "issue\_id": "string",
-
-&nbsp; "accuracy\_related": "boolean",
-
-&nbsp; "confidence": "float",
-
-&nbsp; "reason": "string"
-
+  "intent": "query | filter_and_report | analyze | update",
+  "requires_file_processing": "boolean",
+  "filter_criteria": {
+    "type": "accuracy | performance | security | critical | custom",
+    "description": "string",
+    "confidence_threshold": "float 0.0-1.0"
+  },
+  "requires_slack_post": "boolean",
+  "requires_ticket_creation": "boolean",
+  "requires_analysis": "boolean",
+  "output_format": "executive | detailed | bullet"
 }
-
 ```
 
+## 9.2 Classification Output Contract
 
+```json
+{
+  "issue_id": "string",
+  "matches_criteria": "boolean",
+  "confidence": "float",
+  "reason": "string"
+}
+```
 
 Validation:
+* confidence between 0 and 1
+* matches_criteria boolean
+* reason non-empty if matches_criteria is true
 
-
-
-\* confidence between 0 and 1
-
-\* accuracy\_related boolean
-
-\* reason non-empty if true
-
-
-
----
-
-
-
-\## 8.2 Slack Agent Contract
-
-
+## 9.3 Answer Agent Contract
 
 Input:
-
-
-
 ```json
-
 {
-
-&nbsp; "issues": \[],
-
-&nbsp; "tone": "executive"
-
+  "query": "string",
+  "context_issues": [],
+  "rag_context": "string"
 }
-
 ```
-
-
 
 Output:
-
-
-
 ```json
-
 {
-
-&nbsp; "summary\_markdown": "...",
-
-&nbsp; "slack\_url": "..."
-
+  "answer": "string",
+  "sources": [],
+  "confidence": "float"
 }
-
 ```
 
-
-
----
-
-
-
-\## 8.3 JIRA Agent Contract
-
-
+## 9.4 Slack Agent Contract
 
 Input:
-
-
-
 ```json
-
 {
-
-&nbsp; "issues": \[]
-
+  "issues": [],
+  "slack_query": "string"
 }
-
 ```
-
-
 
 Output:
-
-
-
 ```json
-
 {
-
-&nbsp; "created": \[],
-
-&nbsp; "duplicates": \[]
-
+  "summary_markdown": "string",
+  "slack_url": "string"
 }
-
 ```
 
+## 9.5 JIRA Agent Contract
 
+Input:
+```json
+{
+  "issues": [],
+  "jira_query": "string"
+}
+```
 
----
-
-
-
-\# 9. Cost Control Strategy
-
-
-
----
-
-
-
-\## 9.1 Cost Layers
-
-
-
-1\. Embedding cost
-
-2\. Classification cost
-
-3\. Slack summary generation cost
-
-4\. Ticket generation cost
-
-
+Output:
+```json
+{
+  "created": [],
+  "duplicates": []
+}
+```
 
 ---
 
+# 10. Cost Control Strategy
 
+## 10.1 Cost Layers
 
-\## 9.2 Optimization Strategy
+1. Enrichment cost (1 LLM call per request)
+2. RAG embedding cost (conditional)
+3. Classification cost (conditional, batched)
+4. Answer generation cost (conditional)
+5. Slack summary generation cost (conditional)
+6. Ticket generation cost (conditional, per ticket)
 
+## 10.2 Optimization Strategy
 
-
-\* Batch classification
-
-\* Cache embeddings
-
-\* Early exit if no accuracy issues
-
-\* Limit max issues per file
-
-\* Reduce prompt verbosity
-
-
-
----
-
-
-
-\# 10. Scalability Design
-
-
+* Skip RAG + classification if `filter_criteria` is null
+* Skip all agent calls if no file + pure query → only 1 LLM call (enrichment) + Answer Agent
+* Batch classification
+* Cache embeddings
+* Early exit if no issues match
+* Limit max issues per file
 
 ---
 
+# 11. Scalability Design
 
-
-\## 10.1 Horizontal Scaling
-
-
+## 11.1 Horizontal Scaling
 
 Stateless FastAPI containers:
+* Load balancer
+* Shared Qdrant instance
+* Shared secret store
 
-
-
-\* Load balancer
-
-\* Shared Qdrant instance
-
-\* Shared secret store
-
-
-
----
-
-
-
-\## 10.2 Background Task Extension (Future)
-
-
-
-Move Slack + JIRA to queue system:
-
-
+## 11.2 Background Task Extension (Future)
 
 ```mermaid
-
 flowchart TD
-
-&nbsp;   A\[Orchestrator]
-
-&nbsp;   A --> Q\[Task Queue]
-
-&nbsp;   Q --> Worker1
-
-&nbsp;   Q --> Worker2
-
+    A[Orchestrator]
+    A --> Q[Task Queue]
+    Q --> Worker1
+    Q --> Worker2
 ```
 
+---
 
+# 12. Latency Budget Breakdown
+
+| Path | Stage | Expected |
+|------|-------|----------|
+| Query only | Enrichment + Answer | < 2s total |
+| Full pipeline | Enrichment | 600ms |
+| | RAG retrieval | 300ms |
+| | Classification (10 issues) | 1.5s |
+| | Slack Branch | 800ms |
+| | JIRA Branch (parallel) | 2s |
+| | **Total P95** | **< 4s** |
 
 ---
 
+# 13. Edge Case Handling
 
-
-\# 11. Deployment Topology
-
-
-
----
-
-
-
-```mermaid
-
-flowchart TB
-
-&nbsp;   LB\[Load Balancer]
-
-&nbsp;   LB --> API1
-
-&nbsp;   LB --> API2
-
-
-
-&nbsp;   API1 --> OpenAI
-
-&nbsp;   API2 --> OpenAI
-
-
-
-&nbsp;   API1 --> Slack
-
-&nbsp;   API2 --> Slack
-
-
-
-&nbsp;   API1 --> JIRA
-
-&nbsp;   API2 --> JIRA
-
-
-
-&nbsp;   API1 --> LangSmith
-
-&nbsp;   API2 --> LangSmith
-
-```
-
-
-
----
-
-
-
-\# 12. Latency Budget Breakdown
-
-
-
-| Stage          | Expected      |
-
-| -------------- | ------------- |
-
-| Enrichment     | 600ms         |
-
-| RAG            | 300ms         |
-
-| Classification | 1.5s          |
-
-| Slack Branch   | 800ms         |
-
-| JIRA Branch    | 2s (parallel) |
-
-| Total P95      | < 4s          |
-
-
-
----
-
-
-
-\# 13. Edge Case Handling
-
-
-
----
-
-
-
-\## Case 1: No Accuracy Issues Found
-
-
+## Case 1: No Matching Issues Found
 
 Return:
+* Slack message: "No issues matched the specified criteria"
+* No JIRA tickets created
+* Answer: summary of what was searched and why nothing matched
 
-
-
-\* Slack message stating no critical accuracy issues
-
-\* No JIRA tickets created
-
-
-
----
-
-
-
-\## Case 2: Low Confidence Across All Issues
-
-
+## Case 2: Low Confidence Across All Issues
 
 Return:
+* "Classification confidence low. Manual review recommended."
+* Include all issues with their confidence scores
 
+## Case 3: No File Uploaded But File Required
 
+Return:
+* Error: "This request requires a file upload. Please attach a QA issues file."
 
-\* “Classification confidence low. Manual review recommended.”
+## Case 4: Slack API Rate Limit
 
-
-
----
-
-
-
-\## Case 3: Slack API Rate Limit
-
-
-
-\* Retry with exponential backoff
-
-\* Continue workflow
-
-
+* Retry with exponential backoff
+* Continue other agent branches
 
 ---
 
-
-
-\# 14. Security Boundary Diagram
-
-
+# 14. Security Boundary Diagram
 
 ```mermaid
-
 flowchart LR
+    Public[Public Internet]
+    LB[Load Balancer]
+    API[FastAPI Service]
+    Secrets[Secret Manager]
 
-&nbsp;   Public\[Public Internet]
-
-&nbsp;   LB\[Load Balancer]
-
-&nbsp;   API\[FastAPI Service]
-
-&nbsp;   Secrets\[Secret Manager]
-
-
-
-&nbsp;   Public --> LB
-
-&nbsp;   LB --> API
-
-&nbsp;   API --> Secrets
-
+    Public --> LB
+    LB --> API
+    API --> Secrets
 ```
-
-
 
 Secrets:
-
-
-
-\* OpenAI key
-
-\* Slack token
-
-\* JIRA token
-
-
+* OpenAI key
+* Slack token
+* JIRA token
 
 ---
 
-
-
-\# 15. Evaluation Strategy
-
-
+# 15. Evaluation Strategy
 
 Offline evaluation:
-
-
-
-\* Golden dataset of labeled QA issues
-
-\* Measure precision / recall
-
-\* Tune confidence threshold
-
-
+* Golden dataset of labeled QA issues (10 issues, mixed types)
+* Measure intent extraction accuracy
+* Measure classification precision / recall per criteria type
+* Tune confidence thresholds
 
 Online evaluation:
-
-
-
-\* Compare predicted duplicates vs actual duplicates
-
-\* Monitor classification drift
-
-
+* Monitor intent distribution in Langfuse
+* Track classification drift per issue type
+* Compare predicted duplicates vs actual
 
 ---
 
-
-
-\# 16. Final Architectural Principles
-
-
+# 16. Final Architectural Principles
 
 This system enforces:
 
-
-
-\* Intent enrichment before execution
-
-\* RAG-grounded classification
-
-\* Deterministic state transitions
-
-\* Parallel execution for latency control
-
-\* Failure isolation
-
-\* Observability-first design
-
-\* Measurable quality
-
-\* Scalable stateless backend
-
-
-
----
-
-
-
-If you want, next I can provide:
-
-
-
-\* A full folder structure blueprint
-
-\* LangGraph node-by-node pseudo-code
-
-\* A live demo teaching script with intentional failure injection
-
-\* Or a production readiness checklist suitable for real deployment
-
-
-
+* Intent enrichment before execution
+* Dynamic criteria extraction (not hardcoded)
+* Conditional pipeline routing — only run what's needed
+* RAG-grounded classification for any concern type
+* Deterministic state transitions
+* Parallel execution for latency control
+* Failure isolation per agent branch
+* Observability-first design
+* Measurable quality per path
+* Scalable stateless backend

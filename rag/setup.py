@@ -5,27 +5,24 @@ Run once before starting the API server:
   python rag/setup.py
 
 Creates two collections:
-  1. accuracy_taxonomy  — seeded from rag/knowledge/ documents
-  2. jira_tickets       — starts empty, grows as tickets are created
+  1. qa_taxonomy    — general QA knowledge (accuracy, performance, security, etc.)
+  2. jira_tickets   — created tickets, starts empty, grows as tickets are created
 
 Teaching point:
-  Separating collections by purpose makes retrieval intent explicit.
-  The RAG agent queries the right collection for each use case:
-    - Classification grounding  → accuracy_taxonomy
-    - Duplicate detection       → jira_tickets
+  The qa_taxonomy collection covers ALL issue types now — not just accuracy.
+  The RAG node queries it dynamically based on filter_criteria.type.
 """
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
-
 import config
 
 
 def create_collections(client: QdrantClient) -> None:
-    """Create both Qdrant collections if they don't already exist."""
+    """Create all Qdrant collections if they don't already exist."""
 
     for collection_name in [
-        config.COLLECTION_ACCURACY_TAXONOMY,
+        config.COLLECTION_QA_TAXONOMY,
         config.COLLECTION_JIRA_TICKETS,
     ]:
         existing = [c.name for c in client.get_collections().collections]

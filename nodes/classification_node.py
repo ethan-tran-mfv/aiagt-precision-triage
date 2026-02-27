@@ -1,23 +1,32 @@
 """
-Classification Node [4/8]
+Classification Node [4/8] — Conditional
 
 Purpose:
-  Classify each parsed issue as accuracy-related or not, using:
-    - RAG-retrieved accuracy taxonomy (semantic grounding)
-    - LLM reasoning per issue
+  Classify each parsed issue against the DYNAMIC filter_criteria.
+  Uses RAG-retrieved taxonomy context (or LLM-only if RAG returned empty).
+
+Activation condition:
+  Only runs when enriched_task["filter_criteria"] is not None.
+  If filter_criteria is null (e.g., "summarize all issues"), this node is skipped
+  and all parsed issues pass through to the filter node unchanged.
 
 Input:
   state["parsed_issues"]       list of ParsedIssue
-  state["accuracy_definition"] RAGResult from rag_node
+  state["rag_context"]         RAGResult (may be None — degraded mode)
+  state["enriched_task"]["filter_criteria"]  the dynamic criteria to classify against
 
 Output:
   state["classified_issues"]   list of ClassifiedIssue
 
 Teaching point:
-  Issues are classified in BATCHES (default: 5) to reduce LLM calls.
-  The RAG context is injected into every batch prompt — this is
-  RAG-grounded classification, not pure LLM guessing.
-  Experiment: change CLASSIFICATION_BATCH_SIZE and observe latency vs accuracy.
+  The classification prompt uses filter_criteria.description as the classification
+  target — NOT a hardcoded concept. This makes the same node work for:
+    - accuracy issues
+    - performance issues
+    - security vulnerabilities
+    - any custom criteria the user specifies
+
+  Experiment: change filter_criteria.type and observe different issues being flagged.
 """
 
 import json
@@ -25,13 +34,16 @@ from schemas.state import AgentState
 import config
 
 
-CLASSIFICATION_PROMPT = """You are a QA issue classifier specializing in accuracy-related bugs.
+CLASSIFICATION_PROMPT = """You are a QA issue classifier.
 
-Accuracy Definition (from internal taxonomy):
-{accuracy_context}
+Classification target:
+Type: {criteria_type}
+Description: {criteria_description}
+
+{rag_context_section}
 
 Classify each of the following QA issues. For each issue determine:
-- accuracy_related: true/false
+- matches_criteria: true if the issue matches the classification target above
 - confidence: float between 0.0 and 1.0
 - reason: one sentence explaining your decision
 
@@ -42,7 +54,7 @@ Return a JSON array — one object per issue:
 [
   {{
     "issue_id": "...",
-    "accuracy_related": true,
+    "matches_criteria": true,
     "confidence": 0.85,
     "reason": "..."
   }}
@@ -51,33 +63,37 @@ Return a JSON array — one object per issue:
 Return ONLY the JSON array. No explanation. No markdown.
 """
 
+RAG_CONTEXT_SECTION = """Reference knowledge (use this to inform your classification):
+{rag_context}
+"""
+
+NO_RAG_SECTION = "Note: No reference knowledge available. Use your expert judgment only."
+
 
 def classification_node(state: AgentState) -> AgentState:
     """
-    [Node 4] Classify all parsed issues in batches using LLM + RAG context.
+    [Node 4] Classify issues against dynamic filter_criteria in batches.
     """
     # TODO: implement classification node
     # Steps:
-    #   1. Extract accuracy context string from state["accuracy_definition"]["results"]
-    #      (join all result texts)
-    #   2. Split state["parsed_issues"] into batches of config.CLASSIFICATION_BATCH_SIZE
-    #   3. For each batch:
-    #        a. Format CLASSIFICATION_PROMPT with accuracy_context + issues_json
-    #        b. Call llm.invoke(prompt)
-    #        c. Parse JSON response → list of ClassifiedIssue dicts
-    #        d. On JSONDecodeError: retry once (config.MAX_LLM_RETRIES)
-    #   4. Collect all results → state["classified_issues"]
-    #   5. Return state
-    raise NotImplementedError
-
-
-def _extract_accuracy_context(rag_result: dict) -> str:
-    """Join RAG result chunks into a single context string for the prompt."""
-    # TODO: join rag_result["results"] texts into one string
+    #   1. criteria = state["enriched_task"]["filter_criteria"]
+    #   2. Build rag_context_section:
+    #        if state["rag_context"] and state["rag_context"]["results"]:
+    #            rag_text = "\n".join([r.get("text","") for r in state["rag_context"]["results"]])
+    #            rag_context_section = RAG_CONTEXT_SECTION.format(rag_context=rag_text)
+    #        else:
+    #            rag_context_section = NO_RAG_SECTION
+    #   3. Split state["parsed_issues"] into batches of CLASSIFICATION_BATCH_SIZE
+    #   4. For each batch:
+    #        a. Format CLASSIFICATION_PROMPT with criteria + rag_context_section + issues_json
+    #        b. llm.invoke(prompt)
+    #        c. json.loads(response.content) → list of ClassifiedIssue
+    #        d. On JSONDecodeError: retry once
+    #   5. state["classified_issues"] = all results
+    #   6. Return state
     raise NotImplementedError
 
 
 def _format_issues_for_prompt(issues: list[dict]) -> str:
     """Format a batch of issues as compact JSON (id, title, description only)."""
-    # TODO: return json.dumps of trimmed issue dicts
     raise NotImplementedError
